@@ -15,7 +15,15 @@ const userSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "lists",
   },
-  customProperties: [{ value: String }],
+  unsubscribedLists: [
+    {
+      listId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "lists",
+      },
+    },
+  ],
+  customProperties: [{ title: String, value: String }],
 });
 
 export const User = new mongoose.model("users", userSchema);
