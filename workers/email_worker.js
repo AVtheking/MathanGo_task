@@ -8,6 +8,8 @@ export async function startEmailWorker() {
     const connection = await amqp.connect("amqp://localhost");
     const channel = await connection.createChannel();
     await channel.assertQueue(EMAIL_QUEUE, { durable: false });
+
+    //process email queue
     channel.consume(
       EMAIL_QUEUE,
       async (msg) => {
@@ -15,8 +17,10 @@ export async function startEmailWorker() {
           console.log(
             "\x1b[31m........Message recieved in Email queue........ \x1b[0m"
           );
+
           const { usersToSend, listId } = JSON.parse(msg.content.toString());
 
+          //sending email to all users
           usersToSend.forEach((user) => {
             const unsubscribeUrl = `${process.env.BASE_URL}/api/list/${listId}/unsubscribe/${user._id}`;
 
@@ -31,6 +35,8 @@ export async function startEmailWorker() {
             sendMail(user.email, "Welcome to MathonGo", personalizedEmailBody);
           });
         }
+
+        //acknowledge the message to remove it from the queue
         channel.ack(msg);
       },
       {

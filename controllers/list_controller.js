@@ -23,6 +23,8 @@ export const listCtrl = {
   createList: async (req, res, next) => {
     try {
       const { title, customProperties } = req.body;
+
+      //check if the title and custom properties are present
       if (!title || !customProperties) {
         return next(
           new ErrorHandler(400, "Title and customProperties are required")
@@ -30,6 +32,8 @@ export const listCtrl = {
       }
 
       const { title: propTitle, defaultValue } = customProperties;
+
+      //check if the title and default value are present in the custom Property
       if (!propTitle || !defaultValue) {
         return next(
           new ErrorHandler(400, "Title and defaultValue are required")
@@ -86,7 +90,7 @@ export const listCtrl = {
       //sending the message to the csv queue
       channel.sendToQueue(
         CSV_PARSE_QUEUE,
-        Buffer.from(JSON.stringify({ list, rows, correlationId })),
+        Buffer.from(JSON.stringify({ list, rows })),
         {
           correlationId,
           replyTo: RESULT_QUEUE,
@@ -196,12 +200,27 @@ export const listCtrl = {
       const { listId, userId } = req.params;
 
       const user = await User.findById(userId);
-
+      const list = await List.findById(listId);
       //check if the user exists
       if (!user) {
         return next(new ErrorHandler(404, "User not found"));
       }
+
+      //check if the list exists
+      if (!list) {
+        return next(new ErrorHandler(404, "List not found"));
+      }
+
       console.log("\x1b[35mSending message to unsubscribe queue");
+
+      const isUserUnsubscribed = user.unsubscribedLists.find(
+        (list) => list.listId == listId
+      );
+
+      // console.log(user.unsubscribedLists);
+      if (isUserUnsubscribed) {
+        return res.send("You are already unsubscribed");
+      }
 
       //sending the message to the unsubscribe queue
       channel.sendToQueue(
