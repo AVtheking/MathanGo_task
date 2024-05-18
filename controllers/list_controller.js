@@ -31,14 +31,15 @@ export const listCtrl = {
         );
       }
 
-      const { title: propTitle, defaultValue } = customProperties;
-
       //check if the title and default value are present in the custom Property
-      if (!propTitle || !defaultValue) {
-        return next(
-          new ErrorHandler(400, "Title and defaultValue are required")
-        );
-      }
+      customProperties.forEach((property) => {
+        if (!property.title || !property.defaultValue) {
+          return next(
+            new ErrorHandler(400, "Title and defaultValue are required")
+          );
+        }
+      });
+
       //creating a list with the title and custom properties
       await List.create({
         title,
