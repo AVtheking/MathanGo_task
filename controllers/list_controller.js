@@ -1,14 +1,25 @@
 import { default as csvParser } from "csv-parser";
-import { createObjectCsvStringifier } from "csv-writer";
 import fs from "fs";
-import mongoose from "mongoose";
+import { v4 as uuidv4 } from "uuid";
 import { ErrorHandler } from "../middlewares/error.js";
 import { List } from "../models/list.js";
 import { User } from "../models/user.js";
-import { emailBody } from "../utils/emailBody.js";
-import { sendMail } from "../utils/mailer.js";
+import { channel } from "../utils/connectRabbitMq.js";
+import {
+  CSV_PARSE_QUEUE,
+  RESULT_QUEUE,
+  UNSUBSCRIBE_QUEUE,
+} from "../utils/constants.js";
 
 export const listCtrl = {
+  /*
+    * Create a new list
+    * POST /api/list/create
+    * @body {String} title - Title of the list
+    * @body {Array} customProperties - Custom properties of the list
+    * @returns {Object} - Success message
+
+  */
   createList: async (req, res, next) => {
     try {
       const { title, customProperties } = req.body;
@@ -18,29 +29,47 @@ export const listCtrl = {
         );
       }
 
+      const { title: propTitle, defaultValue } = customProperties;
+      if (!propTitle || !defaultValue) {
+        return next(
+          new ErrorHandler(400, "Title and defaultValue are required")
+        );
+      }
+      //creating a list with the title and custom properties
       await List.create({
         title,
         customProperties: [...customProperties],
       });
       return res.status(201).json({ success: true, message: "List created" });
     } catch (error) {
-      return res.status(500).json({ msg: error.message });
+      return next(new ErrorHandler(500, error.message));
     }
   },
+
+  /*
+   *Upload the users to the list
+   *POST /api/list/upload/:listId
+   *@param {String} listId - Id of the list
+   *@body {File} file - File containing the users
+   */
   uploadUsers: async (req, res, next) => {
     try {
       const listId = req.params.listId;
+
       const list = await List.findById(listId);
+
+      //check if the list exists
       if (!list) {
-        return res.status;
+        return next(new ErrorHandler(404, "List not found"));
       }
+
+      //check if the file is uploaded
       if (!req.file) {
         return next(new ErrorHandler(400, "Please upload a file"));
       }
       const rows = [];
-      const users = [];
-      const invalidUsers = [];
 
+      //parse the csv file
       await new Promise((resolve, reject) => {
         fs.createReadStream(req.file.path)
           .pipe(csvParser())
@@ -48,122 +77,91 @@ export const listCtrl = {
           .on("end", resolve)
           .on("error", () => reject);
       });
-      for (const row of rows) {
-        try {
-          if (!row.name.trim() || !row.email.trim()) {
-            row.error = "Name and email are required";
-            invalidUsers.push(row);
-          }
-          const existingUser = await User.findOne({ email: row.email });
-          console.log(`\x1b[34mexisting user:${existingUser}\x1b[0m`);
-          if (existingUser) {
-            row.error = "List cannot have duplicate emails";
-            invalidUsers.push(row);
-          }
-          const customProperties = list.customProperties.map((prop) => {
-            return {
-              title: prop.title,
-              value: row[prop.title] || prop.defaultValue,
-            };
-          });
 
-          console.log(`error:${row.error}`);
-          console.log(`name:${row.name}`);
-          console.log(`email:${row.email}`);
-          console.log(`users:${JSON.stringify(users)}`);
+      //id for specifing the reciever of the message
+      const correlationId = uuidv4();
 
-          if (!row.error) {
-            users.push({
-              name: row.name,
-              email: row.email,
-              listId,
-              customProperties,
-            });
-          }
-        } catch (error) {
-          console.log(error);
-          reject(error);
+      console.log("\x1b[35mSending message to csv queue");
+
+      //sending the message to the csv queue
+      channel.sendToQueue(
+        CSV_PARSE_QUEUE,
+        Buffer.from(JSON.stringify({ list, rows, correlationId })),
+        {
+          correlationId,
+          replyTo: RESULT_QUEUE,
         }
-      }
+      );
+
       fs.unlinkSync(req.file.path);
-      console.log(`final users:${JSON.stringify(users)} `);
-      console.log(invalidUsers);
-      if (users.length > 0) {
-        await User.insertMany(users);
-      }
 
-      const headers = [
-        {
-          id: "name",
-          title: "Name",
+      //process the result presnt in the result queue
+      channel.consume(
+        RESULT_QUEUE,
+        async (msg) => {
+          if (msg.properties.correlationId === correlationId) {
+            console.log(
+              "\x1b[31m.......Message recieved from result queue........\x1b[0m"
+            );
+
+            const result = JSON.parse(msg.content.toString());
+            const { userNotAdded, userAdded, totalUsers } = JSON.parse(
+              msg.content.toString()
+            );
+
+            //if some users are not added then return response with
+            //the number of users added , not added and total users and CSV
+            userNotAdded > 0
+              ? res.status(200).json({
+                  success: true,
+                  message: `${userAdded} users added out of ${totalUsers}`,
+                  data: {
+                    ...result,
+                  },
+                })
+              : //if all users are added then return response with
+                //the number of users added and total users
+                res.status(200).json({
+                  success: true,
+                  message: `${userAdded} users added out of ${totalUsers}`,
+                  data: {
+                    ...result,
+                  },
+                });
+            channel.ack(msg);
+          }
         },
         {
-          id: "email",
-          title: "Email",
-        },
-        ...list.customProperties.map((prop) => {
-          return { id: prop.title, title: prop.title };
-        }),
-        {
-          id: "error",
-          title: "Error",
-        },
-      ];
-
-      const csvWriter = createObjectCsvStringifier({
-        header: headers,
-      });
-
-      const csvInvalidUsers = invalidUsers.map((user) => {
-        const customProperties = list.customProperties.map((acc, prop) => {
-          acc[prop.title] = user[prop.title] || "";
-          return acc;
-        });
-        return { ...user, ...customProperties };
-      });
-
-      const csvString =
-        csvWriter.getHeaderString() +
-        csvWriter.stringifyRecords(csvInvalidUsers);
-
-      const totalUsers = users.length + invalidUsers.length;
-
-      invalidUsers.length > 0
-        ? res.status(200).json({
-            success: true,
-            message: `${users.length} users added out of ${totalUsers}`,
-            data: {
-              userAdded: users.length,
-              userFailed: invalidUsers.length,
-              totalUsers,
-              invalidUsers: csvString,
-            },
-          })
-        : res.status(200).json({
-            success: true,
-            message: `${users.length} users added out of ${totalUsers}`,
-            data: {
-              userAdded: users.length,
-              userFailed: invalidUsers.length,
-              totalUsers,
-            },
-          });
+          noAck: false,
+        }
+      );
     } catch (error) {
       return next(new ErrorHandler(500, error.message));
     }
   },
 
+  /*
+   *Send email to all subscribed users
+   *POST /api/list/sendMail/:listId
+   *@param {String} listId - Id of the list
+   */
   sendMail: async (req, res, next) => {
     try {
       const listId = req.params.listId;
       const list = await List.findById(listId);
+
+      //check if the list exists
       if (!list) {
         return next(new ErrorHandler(404, "List not found"));
       }
+
+      //find all the users in the list
       const users = await User.find({ listId });
+
       if (users.length === 0) {
         return next(new ErrorHandler(404, "No users found"));
       }
+      //filter the users who have unsubscribed from the email
       const usersToSend = users.filter(
         (user) => !user.unsubscribedLists.includes(listId.toString())
       );
@@ -171,19 +169,14 @@ export const listCtrl = {
       if (usersToSend.length === 0) {
         return next(new ErrorHandler(404, "No subscribed users found"));
       }
+      console.log("\x1b[35mSending message to email queue");
 
-      usersToSend.forEach((user) => {
-        const unsubscribeUrl = `http://localhost:5000/api/v1/list/${listId}/unsubscribe/${user._id}`;
-        const customPropertiy = user.customProperties.find(
-          (prop) => prop.title === "city"
-        );
-        console.log(customPropertiy.value);
-        const personalizedEmailBody = emailBody(unsubscribeUrl)
-          .replace("[name]", user.name)
-          .replace("[email]", user.email)
-          .replace("[city]", customPropertiy.value);
-        sendMail(user.email, "Welcome to MathonGo", personalizedEmailBody);
-      });
+      //sending the message to the email queue
+      channel.sendToQueue(
+        EMAIL_QUEUE,
+        Buffer.from(JSON.stringify({ listId, usersToSend }))
+      );
+
       return res
         .status(200)
         .json({ success: true, message: "Email sent to all subscribed users" });
@@ -191,23 +184,29 @@ export const listCtrl = {
       return next(new ErrorHandler(500, error.message));
     }
   },
+
+  /*
+   *Unsubscribe the user from the email
+   *GET /api/list/:listId/unsubscribe/:userId
+   *@param {String} listId - Id of the list
+   *@param {String} userId - Id of the user
+   */
   unsubscribeEmail: async (req, res, next) => {
-    console.log("here");
     try {
       const { listId, userId } = req.params;
+
       const user = await User.findById(userId);
+
+      //check if the user exists
       if (!user) {
         return next(new ErrorHandler(404, "User not found"));
       }
+      console.log("\x1b[35mSending message to unsubscribe queue");
 
-      await User.findByIdAndUpdate(
-        userId,
-        {
-          $push: { unsubscribedLists: new mongoose.Types.ObjectId(listId) },
-        },
-        {
-          new: true,
-        }
+      //sending the message to the unsubscribe queue
+      channel.sendToQueue(
+        UNSUBSCRIBE_QUEUE,
+        Buffer.from(JSON.stringify({ listId, userId }))
       );
 
       return res.send("Unsubscribed successfully");

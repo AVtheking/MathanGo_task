@@ -1,12 +1,13 @@
 import amqp from "amqplib";
 import { createObjectCsvStringifier } from "csv-writer";
 import { User } from "../models/user.js";
+import { CSV_PARSE_QUEUE } from "../utils/constants.js";
 console.log("inside worker......");
-export async function startWorker() {
+export async function startCSVWorker() {
   const connection = await amqp.connect("amqp://localhost");
   const channel = await connection.createChannel();
 
-  channel.consume("csv_parse_queue", async (msg) => {
+  channel.consume(CSV_PARSE_QUEUE, async (msg) => {
     if (msg) {
       console.log("\x1b[31m........Message recieved........ \x1b[0m");
       const { list, rows, correlationsId } = JSON.parse(msg.content.toString());
