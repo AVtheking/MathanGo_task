@@ -24,11 +24,10 @@ export async function startEmailWorker() {
           usersToSend.forEach((user) => {
             const unsubscribeUrl = `${process.env.BASE_URL}/api/list/${listId}/unsubscribe/${user._id}`;
 
-            console.log(user.customProperties);
             const customPropertiy = user.customProperties.find(
-              (prop) => prop.title === "city" || "City"
+              (prop) => prop.title === "city"
             );
-            console.log(customPropertiy);
+
             const personalizedEmailBody = emailBody(unsubscribeUrl)
               .replace("[name]", user.name)
               .replace("[email]", user.email)
@@ -36,8 +35,6 @@ export async function startEmailWorker() {
             sendMail(user.email, "Welcome to MathonGo", personalizedEmailBody);
           });
         }
-
-        //acknowledge the message to remove it from the queue
       },
       {
         noAck: true,

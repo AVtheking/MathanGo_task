@@ -27,12 +27,9 @@ export async function startUnsubscribeWorker() {
           }
         );
       }
-
-      //acknowledge the message to remove it from the queue
-      channel.ack(msg);
     },
     {
-      noAck: false,
+      noAck: true,
     }
   );
 }

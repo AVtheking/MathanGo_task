@@ -35,16 +35,14 @@ export async function startCSVWorker() {
               row.error = "This email is already present in the list";
               invalidUsers.push(row);
             }
-            let customProperties;
-            if (list.customProperties) {
-              customProperties = list.customProperties.map((prop) => {
-                return {
-                  title: prop.title,
-                  value: row[prop.title] || prop.defaultValue,
-                };
-              });
-            }
-            console.log(customProperties);
+
+            const customProperties = list.customProperties.map((prop) => {
+              return {
+                title: prop.title,
+                value: row[prop.title] || prop.defaultValue,
+              };
+            });
+
             if (!row.error) {
               users.push({
                 name: row.name,
