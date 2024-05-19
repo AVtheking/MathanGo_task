@@ -14,7 +14,7 @@ export default async function connectRabbitMq() {
     await channel.assertQueue(CSV_PARSE_QUEUE, {
       durable: true,
     });
-    await channel.assertQueue(RESULT_QUEUE, { durable: false });
+
     await channel.assertQueue(EMAIL_QUEUE, { durable: false });
     await channel.assertQueue(UNSUBSCRIBE_QUEUE, { durable: true });
 
