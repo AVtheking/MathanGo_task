@@ -28,10 +28,11 @@ export async function startEmailWorker() {
               (prop) => prop.title === "city"
             );
 
-            const personalizedEmailBody = emailBody(unsubscribeUrl)
+            const personalizedEmailBody = emailBody()
               .replace("[name]", user.name)
               .replace("[email]", user.email)
-              .replace("[city]", customPropertiy.value);
+              .replace("[city]", customPropertiy.value)
+              .replace("[unsubscribe]", unsubscribeUrl);
             sendMail(user.email, "Welcome to MathonGo", personalizedEmailBody);
           });
         }
