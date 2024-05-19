@@ -22,7 +22,7 @@ export async function startEmailWorker() {
 
           //sending email to all users
           usersToSend.forEach((user) => {
-            const unsubscribeUrl = `${process.env.BASE_URL}/api/list/${listId}/unsubscribe/${user._id}`;
+            const unsubscribeUrl = `http://localhost:5000/api/list/${listId}/unsubscribe/${user._id}`;
 
             const customPropertiy = user.customProperties.find(
               (prop) => prop.title === "city"

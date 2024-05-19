@@ -186,7 +186,10 @@ export const listCtrl = {
       }
       //filter the users who have unsubscribed from the email
       const usersToSend = users.filter(
-        (user) => !user.unsubscribedLists.includes(listId.toString())
+        (user) =>
+          !user.unsubscribedLists.some(
+            (list) => list.listId.toString() === listId
+          )
       );
 
       if (usersToSend.length === 0) {
