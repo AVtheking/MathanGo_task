@@ -14,6 +14,9 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use("/api/list", listRouter, errorMiddleware);
 
+app.get("/", (req, res) => {
+  res.send("Service is running");
+});
 // Connect to MongoDB
 mongoose.connect(process.env.MONGO_URL).then(async () => {
   console.log("\x1b[33mDatabase connected successfully \x1b[0m");
