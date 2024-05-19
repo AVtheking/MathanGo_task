@@ -24,9 +24,12 @@ export async function startCSVWorker() {
               invalidUsers.push(row);
             }
             const existingUser = await User.findOne({ email: row.email });
+            const exisitingUserInList = users.find(
+              (user) => user.email === row.email
+            );
 
-            if (existingUser) {
-              row.error = "List cannot have duplicate emails";
+            if (existingUser || exisitingUserInList) {
+              row.error = "This email is already present in the list";
               invalidUsers.push(row);
             }
             const customProperties = list.customProperties.map((prop) => {
