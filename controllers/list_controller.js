@@ -5,7 +5,11 @@ import { ErrorHandler } from "../middlewares/error.js";
 import { List } from "../models/list.js";
 import { User } from "../models/user.js";
 import { channel } from "../utils/connectRabbitMq.js";
-import { CSV_PARSE_QUEUE, UNSUBSCRIBE_QUEUE,EMAIL_QUEUE } from "../utils/constants.js";
+import {
+  CSV_PARSE_QUEUE,
+  EMAIL_QUEUE,
+  UNSUBSCRIBE_QUEUE,
+} from "../utils/constants.js";
 
 export const listCtrl = {
   /*
@@ -31,7 +35,10 @@ export const listCtrl = {
       customProperties.forEach((property) => {
         if (!property.title || !property.defaultValue) {
           return next(
-            new ErrorHandler(400, "Title and defaultValue are required")
+            new ErrorHandler(
+              400,
+              "Title and defaultValue of custom property are required"
+            )
           );
         }
       });
@@ -84,7 +91,7 @@ export const listCtrl = {
           .on("end", resolve)
           .on("error", () => reject);
       });
- fs.unlinkSync(req.file.path);
+      fs.unlinkSync(req.file.path);
       //id for specifing the reciever of the message
       const correlationId = uuidv4();
 
@@ -105,47 +112,50 @@ export const listCtrl = {
         }
       );
 
+      channel.consume(
+        q.queue,
+        async (msg) => {
+          const result = JSON.parse(msg.content.toString());
+          const {
+            userNotAdded,
+            userAdded,
+            totalUsers,
 
-      channel.consume(q.queue, async (msg) => {
-        const result = JSON.parse(msg.content.toString());
-        const {
-          userNotAdded,
-          userAdded,
-          totalUsers,
+            invalidUsers,
+          } = result;
 
-          invalidUsers,
-        } = result;
+          if (msg.properties.correlationId === correlationId) {
+            console.log(
+              "\x1b[31m.......Message recieved from result queue........\x1b[0m"
+            );
 
-        if (msg.properties.correlationId === correlationId) {
-          console.log(
-            "\x1b[31m.......Message recieved from result queue........\x1b[0m"
-          );
-
-          //if some users are not added then return response with
-          //the number of users added , not added and total users and CSV
-          userNotAdded > 0
-            ? res.status(200).json({
-                success: true,
-                message: `${userAdded} users added out of ${totalUsers}`,
-                data: {
-                  userAdded,
-                  userNotAdded,
-                  totalUsers,
-                  invalidUsers,
-                },
-              })
-            : //if all users are added then return response with
-              //the number of users added and total users
-              res.status(200).json({
-                success: true,
-                message: `${userAdded} users added out of ${totalUsers}`,
-                data: {
-                  userAdded,
-                  totalUsers,
-                },
-              });
-        }
-      },{noAck:true});
+            //if some users are not added then return response with
+            //the number of users added , not added and total users and CSV
+            userNotAdded > 0
+              ? res.status(200).json({
+                  success: true,
+                  message: `${userAdded} users added out of ${totalUsers}`,
+                  data: {
+                    userAdded,
+                    userNotAdded,
+                    totalUsers,
+                    invalidUsers,
+                  },
+                })
+              : //if all users are added then return response with
+                //the number of users added and total users
+                res.status(200).json({
+                  success: true,
+                  message: `${userAdded} users added out of ${totalUsers}`,
+                  data: {
+                    userAdded,
+                    totalUsers,
+                  },
+                });
+          }
+        },
+        { noAck: true }
+      );
 
       //process the result presnt in the result queue
     } catch (error) {

@@ -7,7 +7,6 @@ const userSchema = new mongoose.Schema({
   },
   email: {
     type: String,
-    unique: true,
     required: true,
     trim: true,
   },
@@ -22,6 +21,7 @@ const userSchema = new mongoose.Schema({
         ref: "lists",
       },
     },
+    8,
   ],
   customProperties: [{ title: String, value: String }],
 });

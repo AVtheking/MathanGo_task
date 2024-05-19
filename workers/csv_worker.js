@@ -23,7 +23,10 @@ export async function startCSVWorker() {
               row.error = "Name and email are required";
               invalidUsers.push(row);
             }
-            const existingUser = await User.findOne({ email: row.email });
+            const existingUser = await User.findOne({
+              email: row.email,
+              listId: list._id,
+            });
             const exisitingUserInList = users.find(
               (user) => user.email === row.email
             );
@@ -32,13 +35,16 @@ export async function startCSVWorker() {
               row.error = "This email is already present in the list";
               invalidUsers.push(row);
             }
-            const customProperties = list.customProperties.map((prop) => {
-              return {
-                title: prop.title,
-                value: row[prop.title] || prop.defaultValue,
-              };
-            });
-
+            let customProperties;
+            if (list.customProperties) {
+              customProperties = list.customProperties.map((prop) => {
+                return {
+                  title: prop.title,
+                  value: row[prop.title] || prop.defaultValue,
+                };
+              });
+            }
+            console.log(customProperties);
             if (!row.error) {
               users.push({
                 name: row.name,
