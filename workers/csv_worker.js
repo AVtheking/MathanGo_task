@@ -3,7 +3,6 @@ import { createObjectCsvStringifier } from "csv-writer";
 import { User } from "../models/user.js";
 import { CSV_PARSE_QUEUE } from "../utils/constants.js";
 
-
 export async function startCSVWorker() {
   const connection = await amqp.connect("amqp://localhost");
   const channel = await connection.createChannel();

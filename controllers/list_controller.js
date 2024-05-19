@@ -5,11 +5,7 @@ import { ErrorHandler } from "../middlewares/error.js";
 import { List } from "../models/list.js";
 import { User } from "../models/user.js";
 import { channel } from "../utils/connectRabbitMq.js";
-import {
-  CSV_PARSE_QUEUE,
-  RESULT_QUEUE,
-  UNSUBSCRIBE_QUEUE,
-} from "../utils/constants.js";
+import { CSV_PARSE_QUEUE, UNSUBSCRIBE_QUEUE } from "../utils/constants.js";
 
 export const listCtrl = {
   /*
@@ -41,11 +37,17 @@ export const listCtrl = {
       });
 
       //creating a list with the title and custom properties
-      await List.create({
+      const list = await List.create({
         title,
         customProperties: [...customProperties],
       });
-      return res.status(201).json({ success: true, message: "List created" });
+      return res.status(201).json({
+        success: true,
+        message: "List created",
+        data: {
+          ...list._doc,
+        },
+      });
     } catch (error) {
       return next(new ErrorHandler(500, error.message));
     }
@@ -86,60 +88,66 @@ export const listCtrl = {
       //id for specifing the reciever of the message
       const correlationId = uuidv4();
 
+      //creating a new queue for each request
+      //making it exclusive so that if the connection is closed the queue
+      //is automatically deleted
+      const q = await channel.assertQueue("", { exclusive: true });
+
       console.log("\x1b[35mSending message to csv queue");
 
       //sending the message to the csv queue
       channel.sendToQueue(
         CSV_PARSE_QUEUE,
-        Buffer.from(JSON.stringify({ list, rows })),
+        Buffer.from(JSON.stringify({ list, rows, correlationId })),
         {
           correlationId,
-          replyTo: RESULT_QUEUE,
+          replyTo: q.queue,
         }
       );
 
       fs.unlinkSync(req.file.path);
+      channel.consume(q.queue, async (msg) => {
+        const result = JSON.parse(msg.content.toString());
+        const {
+          userNotAdded,
+          userAdded,
+          totalUsers,
+
+          invalidUsers,
+        } = result;
+
+        if (msg.properties.correlationId === correlationId) {
+          console.log(
+            "\x1b[31m.......Message recieved from result queue........\x1b[0m"
+          );
+
+          //if some users are not added then return response with
+          //the number of users added , not added and total users and CSV
+          userNotAdded > 0
+            ? res.status(200).json({
+                success: true,
+                message: `${userAdded} users added out of ${totalUsers}`,
+                data: {
+                  userAdded,
+                  userNotAdded,
+                  totalUsers,
+                  invalidUsers,
+                },
+              })
+            : //if all users are added then return response with
+              //the number of users added and total users
+              res.status(200).json({
+                success: true,
+                message: `${userAdded} users added out of ${totalUsers}`,
+                data: {
+                  userAdded,
+                  totalUsers,
+                },
+              });
+        }
+      });
 
       //process the result presnt in the result queue
-      channel.consume(
-        RESULT_QUEUE,
-        async (msg) => {
-          if (msg.properties.correlationId === correlationId) {
-            console.log(
-              "\x1b[31m.......Message recieved from result queue........\x1b[0m"
-            );
-
-            const result = JSON.parse(msg.content.toString());
-            const { userNotAdded, userAdded, totalUsers } = JSON.parse(
-              msg.content.toString()
-            );
-
-            //if some users are not added then return response with
-            //the number of users added , not added and total users and CSV
-            userNotAdded > 0
-              ? res.status(200).json({
-                  success: true,
-                  message: `${userAdded} users added out of ${totalUsers}`,
-                  data: {
-                    ...result,
-                  },
-                })
-              : //if all users are added then return response with
-                //the number of users added and total users
-                res.status(200).json({
-                  success: true,
-                  message: `${userAdded} users added out of ${totalUsers}`,
-                  data: {
-                    ...result,
-                  },
-                });
-            channel.ack(msg);
-          }
-        },
-        {
-          noAck: false,
-        }
-      );
     } catch (error) {
       return next(new ErrorHandler(500, error.message));
     }
