@@ -5,7 +5,7 @@ import { ErrorHandler } from "../middlewares/error.js";
 import { List } from "../models/list.js";
 import { User } from "../models/user.js";
 import { channel } from "../utils/connectRabbitMq.js";
-import { CSV_PARSE_QUEUE, UNSUBSCRIBE_QUEUE } from "../utils/constants.js";
+import { CSV_PARSE_QUEUE, UNSUBSCRIBE_QUEUE,EMAIL_QUEUE } from "../utils/constants.js";
 
 export const listCtrl = {
   /*
@@ -145,7 +145,7 @@ export const listCtrl = {
                 },
               });
         }
-      });
+      },{noAck:true});
 
       //process the result presnt in the result queue
     } catch (error) {
