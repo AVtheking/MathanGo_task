@@ -84,7 +84,7 @@ export const listCtrl = {
           .on("end", resolve)
           .on("error", () => reject);
       });
-
+ fs.unlinkSync(req.file.path);
       //id for specifing the reciever of the message
       const correlationId = uuidv4();
 
@@ -105,7 +105,7 @@ export const listCtrl = {
         }
       );
 
-      fs.unlinkSync(req.file.path);
+
       channel.consume(q.queue, async (msg) => {
         const result = JSON.parse(msg.content.toString());
         const {
